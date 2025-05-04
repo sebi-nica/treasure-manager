@@ -157,24 +157,37 @@ void addTreasure(char* hunt_name){
 }
 
 void viewTreasure(char* hunt_name, char* treasure_id) {
-    char path[128];
-    printf("user name->");
-    char username[32];
-    scanf("%s", username);
-    snprintf(path, sizeof(path), "./%s/%s", hunt_name, username);
-    int fd = open(path, O_RDONLY);
-    if(fd == -1) error("open_treasures_file");
-    treasure t;
-    while (read(fd, &t, sizeof(treasure)) == sizeof(treasure))
-      if(strcmp(t.id, treasure_id) == 0){
-      printTreasure(t);
-      close(fd);
-      return;
-      }
-    printf("no treasure found\n");
-    close(fd);
-    return;
+    char path[512];
+    DIR *hunt_dir = opendir(hunt_name);
+    if (hunt_dir == NULL) {
+        error("Failed to open hunt directory");
+    }
+
+    struct dirent *entry;
+
+    while ((entry = readdir(hunt_dir)) != NULL) {
+        if (strcmp(entry->d_name, ".") == 0 || strcmp(entry->d_name, "..") == 0 || strcmp(entry->d_name, "logged_hunt.txt") == 0) {
+            continue;
+        }
+        snprintf(path, sizeof(path), "./%s/%s", hunt_name, entry->d_name);
+
+        int fd = open(path, O_RDONLY);
+        if (fd == -1) continue;
+        treasure t;
+
+        while (read(fd, &t, sizeof(treasure)) == sizeof(treasure))
+				  if(strcmp(t.id, treasure_id) == 0){
+						printTreasure(t);
+						close(fd);
+						closedir(hunt_dir);
+						return;
+				  }
+		  close(fd);
+		  }
+	  closedir(hunt_dir);
+	  printf("treasure not found\n");
 }
+
 
 void listTreasure(char* hunt_name){
   DIR *hunt_dir = opendir(hunt_name);
