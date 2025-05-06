@@ -34,12 +34,12 @@ void printHelpMessage(){
 
 void startMonitor(){
 	if(monitor_state == 2){
-		printf("monitor already running\n");
+		printf("<<monitor already running\n");
 		return;
 	}else if(monitor_state == 1){
 		kill(monitor_pid, SIGUSR2);
 		monitor_state = 2;
-		printf("monitor termination cancelled\n");
+		printf("<<monitor termination cancelled\n");
 		return;
 	}
 	monitor_pid = fork();
@@ -55,7 +55,7 @@ void startMonitor(){
         }
 			break;
 		default: // parent
-			printf("monitor is ON.\n");
+			printf("<<monitor is ON.\n");
 			monitor_state = 2;
 			break;
 	}
@@ -63,15 +63,15 @@ void startMonitor(){
 
 void stopMonitor(){
 	if(monitor_state == 1){
-		printf("monitor already stopping\n");
+		printf("<<monitor already stopping\n");
 		return;
 	} else if(monitor_state == 0){
-		printf("monitor already off\n");
+		printf("<<monitor already off\n");
 		return;
 	}
 	kill(monitor_pid, SIGTERM); // sending monitor termination signal
 	monitor_state = 1;
-	printf("terminating monitor in 5 seconds\n");
+	printf("<<terminating monitor in 5 seconds\n");
 }
 
 int getCommand(char* command) {
@@ -92,15 +92,17 @@ void handle_sigchld(){
     monitor_state = 0;
     if (WIFEXITED(status)) {
         int exit_code = WEXITSTATUS(status);
-        printf("monitor terminated with status: %d\n", exit_code);
-        printf("monitor is OFF.\n");
+        printf("<<monitor terminated with status: %d\n", exit_code);
+        printf("<<monitor is OFF.\n");
+        return;
     }
-   	
+   	printf("bye bye monitor\n");
 }
 
 void writeCommand(char* command) {
     if (monitor_state != 2) {
-        printf("Monitor has to be running\n");
+        printf("<<monitor has to be running\n");
+        printf("monitor state = %d\n", monitor_state);
         return; // check monitor status
     }
 
@@ -141,24 +143,25 @@ void writeCommand(char* command) {
 		
 		switch(code){
 			case -1:
-				printf("incorrect format\n");
+				printf("<<incorrect format\n");
 				return;
-			case 0:
-				// here go code to write command to final_command (in format acceptable by treasure_manager)
+			case 0: // ./manager_exec hunts
+				snprintf(final_command, sizeof(final_command), "./manager_exec hunts");
 				break;
-			case 0:
-				// here go code to write command to final_command (in format acceptable by treasure_manager)
+			case 1: // ./manager_exec list hunt_name
+				snprintf(final_command, sizeof(final_command), "./manager_exec list %s", a1);
 				break;
-			case 0:
-				// here go code to write command to final_command (in format acceptable by treasure_manager)
+			case 2: // ./manager_exec view hunt_name treasure_name
+				snprintf(final_command, sizeof(final_command), "./manager_exec view %s %s", a1, a2);
 				break;
 			default:
-				printf("incorrect format (but weird code value)\n");
+				printf("<<incorrect format (but weird code value)\n");
 				break;
 		
 		}
 
-    int fd = open("commands.txt", O_WRONLY | O_CREAT, 0644); // open 
+		int fd = open("commands.txt", O_WRONLY | O_CREAT | O_TRUNC, 0644);
+
     if (fd == -1) {
         perror("fopen error");
         return;
@@ -213,13 +216,13 @@ int main() {
 		  		break;
 		  	case 6:
 		  		if(!monitor_state){
-		  			printf("closing program\n");
+		  			printf("<<closing program\n");
 		  			return 0;
 		  		}
-		  		printf("monitor must be terminated before you exit.\n");
+		  		printf("<<monitor must be terminated before you exit.\n");
 		  		break;
 		  	default:
-		  	printf("unknown command\n");
+		  	printf("<<unknown command\n");
 		  		break;
 		  }
     }

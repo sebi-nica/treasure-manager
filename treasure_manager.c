@@ -189,7 +189,7 @@ void viewTreasure(char* hunt_name, char* treasure_id) {
 }
 
 
-void listTreasure(char* hunt_name){
+void listTreasures(char* hunt_name, int trigger){
   DIR *hunt_dir = opendir(hunt_name);
   if(hunt_dir == NULL) error("opendir_huntdir");
   struct dirent *entry;
@@ -212,7 +212,9 @@ void listTreasure(char* hunt_name){
   printf("HUNT NAME: %s\n", hunt_name);
   printf("TOTAL SIZE: %ld bytes\n", total_size);
   printf("LAST MODIFIED: %s\n", ctime(&latest_mtime));
-
+	
+	if(!trigger) return; // if trigger is not active, it only displays the general data about the hunt
+	
   rewinddir(hunt_dir); // set the stream to the beginning again
 
   int fd;
@@ -232,7 +234,25 @@ void listTreasure(char* hunt_name){
   closedir(hunt_dir);
 }
 
+void listHunts(){
+	DIR *cwd = opendir(".");
+	if (!cwd) error("opendir");
 
+	struct dirent *entry;
+	struct stat st;
+	while ((entry = readdir(cwd)) != NULL) {
+		  if (strcmp(entry->d_name, ".") == 0 || 
+        strcmp(entry->d_name, "..") == 0 || 
+        strcmp(entry->d_name, "logs") == 0 || 
+        strcmp(entry->d_name, ".git") == 0)
+        continue;
+
+		  if (stat(entry->d_name, &st) == -1) continue;
+		  if (S_ISDIR(st.st_mode)) listTreasures(entry->d_name, 0);
+	}
+
+	closedir(cwd);
+}
 
 void removeTreasure(char* hunt_name, char* treasure_id){
   char path[128];
@@ -345,7 +365,8 @@ int getCommand(char* command){
   if(!strcmp(command, "view")) return 3;
   if(!strcmp(command, "remove_treasure")) return 4;
   if(!strcmp(command, "remove_hunt")) return 5;
-  return 6;
+  if(!strcmp(command, "hunts")) return 6;
+  return 7;
 }
 
 int main(int argc, char** argv){
@@ -363,7 +384,7 @@ int main(int argc, char** argv){
   case 2:
     if(argc != 3) error("incorrect_arg_number");
     printf("listing treasures in hunt %s\n\n", argv[2]);
-    listTreasure(argv[2]);
+    listTreasures(argv[2], 1);
     break;
   case 3:
     if(argc != 4) error("incorrect_arg_number");
@@ -379,6 +400,10 @@ int main(int argc, char** argv){
  		if(argc != 3) error("incorrect_arg_number");
  		printf("deleting hunt %s\n\n", argv[2]);
  		removeHunt(argv[2]);
+ 		break;
+ 	case 6:
+ 		printf("displaying info about hunts\n\n");
+ 		listHunts();
  		break;
   default:
     error("unknown_command");

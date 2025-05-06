@@ -26,6 +26,25 @@ void handle_sigusr2(){
 	cancel_termination = 1;
 }
 
+void handle_sigusr1(){
+	FILE *f = fopen("commands.txt", "r");
+    if (!f) {
+        perror("fopen");
+        return;
+    }
+
+    char command[256];
+    if (fgets(command, sizeof(command), f) != NULL) {
+        size_t len = strlen(command);
+        if (len > 0 && command[len - 1] == '\n')
+            command[len - 1] = '\0';
+
+        system(command);
+    }
+
+    fclose(f);
+}
+
 int main(void){
 	struct sigaction act;
   memset(&act, 0x00, sizeof(struct sigaction));
@@ -39,6 +58,12 @@ int main(void){
   if (sigaction(SIGUSR2, &act, NULL) < 0)
     {
       perror("Process set SIGUSR2");
+      exit(-1);
+    }
+  act.sa_handler = handle_sigusr1;
+  if (sigaction(SIGUSR1, &act, NULL) < 0)
+    {
+      perror("Process set SIGUSR1");
       exit(-1);
     }
     while (1) pause();
