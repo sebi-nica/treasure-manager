@@ -39,7 +39,6 @@ int main() {
 
         fclose(f);
         printf("%s : %d\n", entry->d_name, total);
-        //fflush(stdout);
     }
 
     closedir(dir);
