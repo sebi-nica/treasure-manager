@@ -26,24 +26,70 @@ void handle_sigusr2(){
 	cancel_termination = 1;
 }
 
-void handle_sigusr1(){
-	FILE *f = fopen("commands.txt", "r");
+void handle_sigusr1() { // updated to call treasure_manager with execl instead of system
+    FILE *f = fopen("commands.txt", "r");
     if (!f) {
         perror("fopen");
         return;
     }
 
-    char command[256];
-    if (fgets(command, sizeof(command), f) != NULL) {
-        size_t len = strlen(command);
-        if (len > 0 && command[len - 1] == '\n')
-            command[len - 1] = '\0';
+    char command_line[256];
+    if (fgets(command_line, sizeof(command_line), f) == NULL) {
+        fclose(f);
+        return;
+    }
+    fclose(f);
 
-        system(command);
+    size_t len = strlen(command_line);
+    if (len > 0 && command_line[len - 1] == '\n')
+        command_line[len - 1] = '\0';
+
+    char *args[20];
+    int i = 0;
+    char *token = strtok(command_line, " "); // split command into arguments for execvp
+    while (token && i < 19) {
+        args[i++] = token;
+        token = strtok(NULL, " ");
+    }
+    args[i] = NULL;
+
+    int pipefd[2];
+    if (pipe(pipefd) == -1) {
+        perror("pipe");
+        return;
     }
 
-    fclose(f);
+    pid_t pid = fork();
+    if (pid == -1) {
+        perror("fork");
+        return;
+    }
+
+    if (pid == 0) { // child
+        close(pipefd[0]);
+        dup2(pipefd[1], STDOUT_FILENO);
+        close(pipefd[1]);
+
+        execvp(args[0], args);
+        perror("execvp");
+        exit(1);
+    } else { // parent
+        close(pipefd[1]);
+
+        char buffer[1024];
+        ssize_t n;
+        while ((n = read(pipefd[0], buffer, sizeof(buffer)-1)) > 0) {
+            buffer[n] = '\0';
+            printf("%s", buffer); // treasure_hub redirects this through its pipe
+            fflush(stdout);
+        }
+
+        close(pipefd[0]);
+        waitpid(pid, NULL, 0);
+    }
 }
+
+
 
 int main(void){
 	struct sigaction act;

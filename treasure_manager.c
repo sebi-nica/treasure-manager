@@ -114,7 +114,7 @@ void addTreasure(char* hunt_name){
   if(cwd == NULL) error("opendir_cwd");
   struct dirent *entry;
   while((entry = readdir(cwd)) != NULL){
-    if(strcmp(entry->d_name, ".") == 0 || strcmp(entry->d_name, "..") == 0 || strcmp(entry->d_name, "logs") == 0)
+    if(strcmp(entry->d_name, ".") == 0 || strcmp(entry->d_name, "..") == 0 || strcmp(entry->d_name, "logs") == 0 || strcmp(entry->d_name, ".git") == 0)
       continue;
     if(strcmp(entry->d_name, hunt_name) == 0) break;
   }// search for the hunt
