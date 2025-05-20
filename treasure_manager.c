@@ -25,7 +25,8 @@ void error(char* message){
 void printHelpMessage(){
   printf("help message\n   add <hunt_name> - adds a treasure in specified hunt\n   list <hunt_name> - lists all treasures in specified hunt\n");
   printf("   view <hunt_name> <treasure_id> - display info about a hunt\n   remove_treasure <hunt_name> <treasure_id> - deletes a treasure\n");
-  printf("   remove_hunt <hunt_name> - remove an entire hunt\n   PRO TIP: when adding a treasure, write 'random' when prompted for ID to generate a random treasure\n");
+  printf("   remove_hunt <hunt_name> - remove an entire hunt\n   hunts - lists all hunts and how many treasures there are in each\n");
+  printf("   PRO TIP: when adding a treasure, write 'random' when prompted for ID to generate a random treasure\n");
   exit(0);
 }
 
@@ -210,10 +211,14 @@ void listTreasures(char* hunt_name, int trigger){
   }
 
   printf("HUNT NAME: %s\n", hunt_name);
-  printf("TOTAL SIZE: %ld bytes\n", total_size);
-  printf("LAST MODIFIED: %s\n", ctime(&latest_mtime));
-	
-	if(!trigger) return; // if trigger is not active, it only displays the general data about the hunt
+  if(trigger){
+    printf("TOTAL SIZE: %ld bytes\n", total_size);
+    printf("LAST MODIFIED: %s", ctime(&latest_mtime));
+  }
+  printf("TREASURE COUNT: %ld\n\n", total_size / sizeof(treasure));
+  
+  if(!trigger) return;
+  // used for the listHunts function that does not require also printing all treasures
 	
   rewinddir(hunt_dir); // set the stream to the beginning again
 

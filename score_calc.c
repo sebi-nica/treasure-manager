@@ -26,8 +26,8 @@ int main() {
     struct dirent *entry;
     while ((entry = readdir(dir)) != NULL) {
         if (entry->d_type != DT_REG) continue;
-        if (strcmp(entry->d_name, "logged_hunt.txt") == 0) continue;
-
+    	if(strcmp(entry->d_name, "logged_hunt.txt") == 0)
+			continue;
         FILE *f = fopen(entry->d_name, "rb");
         if (!f) continue;
 

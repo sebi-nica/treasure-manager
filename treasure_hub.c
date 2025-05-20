@@ -38,9 +38,9 @@ void compileDependencies(){
 
 
 void printHelpMessage(){
-  printf("help message\n	start_monitor - starts the monitor process\n	list_hunts - [available only when monitor is on] - lists all hunts and number of treasures in each hunt\n	");
-  printf("list_treasures <hunt_id> - [available only when monitor is on] - lists all treasures in a hunt\n	view_treasure <hunt_id> <treasure_id> - [available only when monitor is on] - view a single treasure\n	");
-  printf("stop_monitor - stops the monitor process\n	calculate_scores - shows scores for every user in every hunt DO NOT USE THIS AFTER THE MONITOR HAS BEEN STARTED - BUG TO BE FIXED\n	exit - exits the program. doesn't work if the monitor is still running\n");
+  printf("help message\n   start_monitor - starts the monitor process\n   list_hunts - [available only when monitor is on] - lists all hunts and number of treasures in each hunt\n");
+  printf("   list_treasures <hunt_id> - [available only when monitor is on] - lists all treasures in a hunt\n   view_treasure <hunt_id> <treasure_id> - [available only when monitor is on] - view a single treasure\n");
+  printf("   stop_monitor - stops the monitor process\n   calculate_scores - shows scores for every user in every hunt\n   exit - exits the program. doesn't work if the monitor is still running\n");
 }
 
 void startMonitor(){
@@ -60,10 +60,7 @@ void startMonitor(){
 			return;
 			break;
 		case 0: // child
-		    dup2(pipefd[1], STDOUT_FILENO); // redirect stdout to pipe input
-		    for (int fd = 3; fd < 1024; ++fd)
-    			if (fd != STDOUT_FILENO)
-        			close(fd);
+		    dup2(pipefd[1], STDOUT_FILENO); // redirect monitor stdout to pipe input
 
 		    execl("./monitor_exec", "monitor_exec", NULL);
 
@@ -72,7 +69,7 @@ void startMonitor(){
 		    exit(EXIT_FAILURE);
 			break;
 		default: // parent
-		    close(pipefd[1]); // Close input
+		    close(pipefd[1]); // close input just in case
 			printf("<<monitor is ON.\n");
 			monitor_state = 2;
 			break;
@@ -105,24 +102,33 @@ int getCommand(char* command) {
 }
 
 
-void handle_sigchld(){
-	if(monitor_pid == -1) return;
-		int status;
-    waitpid(monitor_pid, &status, 0);
-    monitor_state = 0;
-    if (WIFEXITED(status)) {
-        int exit_code = WEXITSTATUS(status);
-        printf("<<monitor terminated with status: %d\n", exit_code);
-        printf("<<monitor is OFF.\n");
-        return;
+void handle_sigchld(int sig) {
+    if (monitor_pid == -1) return;
+
+    int status;
+    pid_t result = waitpid(monitor_pid, &status, WNOHANG);
+
+    if (result == monitor_pid) {
+        monitor_state = 0;
+
+        if (WIFEXITED(status)) {
+            int exit_code = WEXITSTATUS(status);
+            printf("\n<<monitor terminated with status: %d\n", exit_code);
+            printf("<<monitor is OFF.\n>>");
+        } else {
+            printf("<<monitor terminated abnormally.\n");
+        }
+
+        close(pipefd[0]);
     }
-   	printf("bye bye monitor\n");
+    // Else: this SIGCHLD was from some other child — ignore it.
 }
+
 
 void writeCommand(char* command) {
     if (monitor_state != 2) {
         printf("<<monitor has to be running\n");
-        printf("monitor state = %d\n", monitor_state);
+        printf("<<monitor state = %d\n", monitor_state);
         return; // check monitor status
     }
 
@@ -147,7 +153,7 @@ void writeCommand(char* command) {
         	strcpy(a1, token);	
         }
     } else if (strcmp(token, "view_treasure") == 0) {
-				//view_treasure should have 2 args
+				//view_treasure should have exactly 2 args
         token = strtok(NULL, " ");
         if (token == NULL) code = -1;
         else{
@@ -175,7 +181,6 @@ void writeCommand(char* command) {
 				snprintf(final_command, sizeof(final_command), "./manager_exec view %s %s", a1, a2);
 				break;
 			default:
-				printf("<<incorrect format (but weird code value)\n");
 				break;
 		
 		}
@@ -187,7 +192,7 @@ void writeCommand(char* command) {
         return;
     }
 
-    if (write(fd, final_command, strlen(final_command)) != strlen(final_command)) {
+    if (write(fd, final_command, strlen(final_command)) != strlen(final_command)) { // write correctly formatted command to the file
         perror("write error");
         close(fd);
         return;
@@ -197,79 +202,67 @@ void writeCommand(char* command) {
     kill(monitor_pid, SIGUSR1); // send SIGUSR1 to monitor so it knows knows to read command from file
 }
 
-void readFromPipe(int fd) {
-    char buffer[1024];
-    ssize_t bytesRead;
+void readFromPipe(int pipefd[2]) {
+    int read_end = pipefd[0];
+    char buf[512];
+    ssize_t n;
 
-    while (1) {
-        fd_set fds;
-        struct timeval tv;
+    int flags = fcntl(read_end, F_GETFL, 0);
+    fcntl(read_end, F_SETFL, flags | O_NONBLOCK); // this makes sure the read() below doesn't get stuck because the monitor keeps its read end open
 
-        FD_ZERO(&fds);
-        FD_SET(fd, &fds);
+    while ((n = read(read_end, buf, sizeof(buf) - 1)) > 0) {
+        buf[n] = '\0';
+        printf("%s", buf);
+        fflush(stdout);
+    }
 
-        tv.tv_sec = 0;
-        tv.tv_usec = 100000; // 0.1s
-
-        int ret = select(fd + 1, &fds, NULL, NULL, &tv);
-        if (ret == 0) break;       // timeout: stop reading
-        if (ret < 0) {             // error
-            perror("select");
-            break;
-        }
-
-        bytesRead = read(fd, buffer, sizeof(buffer) - 1);
-        if (bytesRead <= 0) break; // EOF or error
-
-        buffer[bytesRead] = '\0';
-        printf("%s", buffer);
+    if (n == -1 && errno != EAGAIN && errno != EWOULDBLOCK) { // read() could set errno to EAGAIN and EWOULDBLOCK when it finishes reading
+        perror("readFromPipe read");
     }
 }
-
-
 
 
 void calculateScores() {
     DIR *dir = opendir(".");
-    if (!dir) {
-        perror("opendir");
-        return;
-    }
-	
-	int calc_pipe[512][2], i = -1;
-	
+    if (!dir) return;
+
+    int pipes[512][2], i = 0;
+    pid_t pids[512];
     struct dirent *entry;
-    while ((entry = readdir(dir)) != NULL) {
+
+    while ((entry = readdir(dir)) && i < 512) { // "launch" all the calculators
         if (entry->d_type != DT_DIR) continue;
+        if (!strcmp(entry->d_name, ".") || !strcmp(entry->d_name, "..") || !strcmp(entry->d_name, "logs") || !strcmp(entry->d_name, ".git")) continue;
 
-		if(strcmp(entry->d_name, ".") == 0 || strcmp(entry->d_name, "..") == 0 || strcmp(entry->d_name, "logs") == 0 || strcmp(entry->d_name, ".git") == 0)
-			continue;
-		
-		i++;
-		if (pipe(calc_pipe[i]) == -1) continue;
-		
-		
-		fcntl(calc_pipe[i][1], F_SETFD, FD_CLOEXEC);
-
-		pid_t pid = fork();
-		if (pid == 0) {
-			usleep(10000);
-		    close(calc_pipe[i][0]);
-		    dup2(calc_pipe[i][1], STDOUT_FILENO);
-		    close(calc_pipe[i][1]);
-		    chdir(entry->d_name);
-		    execlp("../score_calc_exec", "../score_calc_exec", NULL);
-		    exit(1);
-		} else {
-		    close(calc_pipe[i][1]);
-		    readFromPipe(calc_pipe[i][0]); 
-		    close(calc_pipe[i][0]);
-		    waitpid(pid, NULL, 0);
-		}
-	}
-
+        if (pipe(pipes[i]) == -1) continue;
+        pid_t pid = fork();
+        if (pid == 0) {
+            close(pipes[i][0]);
+            dup2(pipes[i][1], STDOUT_FILENO);
+            close(pipes[i][1]);
+            chdir(entry->d_name);
+            execlp("../score_calc_exec", "../score_calc_exec", NULL);
+            _exit(1);
+        }
+        close(pipes[i][1]);
+        pids[i++] = pid;
+    }
     closedir(dir);
+
+    char buf[512];
+    for (int j = 0; j < i; j++) { // read all the data they prepared in the pipes
+    	printf("\n");
+        ssize_t n;
+        while ((n = read(pipes[j][0], buf, sizeof(buf)-1)) > 0) {
+            buf[n] = 0;
+            printf("%s", buf);
+        }
+        close(pipes[j][0]);
+        waitpid(pids[j], NULL, 0);
+    }
+    printf("\n");
 }
+
 
 
 
@@ -287,7 +280,7 @@ int main() {
       perror("Process set SIGCHLD");
       exit(-1);
     }
-		
+	printf(">>");
     while(1){
     	char* input_result = NULL;
 
@@ -300,22 +293,27 @@ int main() {
 		  switch(getCommand(command)){
 		  	case 0:
 		  		printHelpMessage();
+		  		printf(">>");
 		  		break;
 		  	case 1:
 		  		startMonitor();
+		  		printf(">>");
 		  		break;
 		  	case 2:
 		  	case 3:
 		  	case 4:
 		  		writeCommand(command);
 		  		usleep(10000);
-		  		readFromPipe(pipefd[0]);
+		  		readFromPipe(pipefd);
+		  		printf(">>");
 		  		break;
 		  	case 5:
 		  		stopMonitor();
+		  		printf(">>");
 		  		break;
 		  	case 6:
 		  		calculateScores();
+		  		printf(">>");
 		  		break;
 		  	case 7:
 		  		if(!monitor_state){
@@ -323,9 +321,11 @@ int main() {
 		  			return 0;
 		  		}
 		  		printf("<<monitor must be terminated before you exit.\n");
+		  		printf(">>");
 		  		break;
 		  	default:
-		  	printf("<<unknown command\n");
+		  		printf("<<unknown command\n");
+		  		printf(">>");
 		  		break;
 		  }
     }
